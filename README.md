@@ -175,6 +175,49 @@ For local development, SSL certificates are organized as follows:
 
 ---
 
+## 🐘 Dynamic PHP Version Detection
+
+For **Laravel** and **WordPress** projects, the script automatically detects available PHP versions and lets you choose:
+
+### 🔍 **Auto-Detection Process**
+
+1. **Scans for PHP versions** in system paths:
+   - **macOS**: `/usr/local/bin/php*` and `/opt/homebrew/bin/php*`
+   - **Linux**: `/usr/bin/php*`
+
+2. **Checks PHP-FMP availability** for each version:
+   - **macOS**: Looks for sockets in `/usr/local/var/run/` or running processes
+   - **Linux**: Checks systemd services (`php8.1-fpm`, `php8.2-fpm`, etc.)
+
+3. **Presents available options** to user:
+   ```
+   🐘 Choose PHP version to use:
+   1) PHP 8.1
+   2) PHP 8.2 (default)
+   3) PHP 8.3
+   ```
+
+### 📡 **Smart PHP-FPM Configuration**
+
+The script automatically configures the appropriate PHP-FPM endpoint:
+
+| OS | PHP Version | Preferred Method | Fallback |
+|----|-------------|------------------|----------|
+| **macOS** | 8.1 | `unix:/usr/local/var/run/php-fpm-8.1.sock` | `127.0.0.1:9081` |
+| **macOS** | 8.2 | `unix:/usr/local/var/run/php-fpm-8.2.sock` | `127.0.0.1:9082` |
+| **Linux** | 8.1 | `unix:/run/php/php8.1-fpm.sock` | `127.0.0.1:9081` |
+| **Linux** | 8.2 | `unix:/run/php/php8.2-fpm.sock` | `127.0.0.1:9082` |
+
+### 💡 **Benefits**
+
+- ✅ **No more hardcoded PHP-FPM ports**
+- ✅ **Automatic version detection**
+- ✅ **Cross-platform compatibility**
+- ✅ **Socket prioritization for better performance**
+- ✅ **Fallback to ports if sockets unavailable**
+
+---
+
 ## ⚠️ Important Notes
 
 • Run the script with a user that has access to Nginx directories.
@@ -199,6 +242,9 @@ For local development, SSL certificates are organized as follows:
 | Domain not recognized | Add domain to `/etc/hosts`, example: `127.0.0.1 myapp.local` |
 | Firefox doesn't recognize local SSL | Run `mkcert -install` again |
 | SSL certificates not found during removal | Script reads paths from Nginx config, ensure config file exists |
+| No PHP versions detected | Install PHP: `brew install php` (macOS) or `sudo apt install php-fpm` (Linux) |
+| PHP-FPM not running | Start service: `brew services start php` (macOS) or `sudo systemctl start php8.2-fpm` (Linux) |
+| Socket connection failed | Check if PHP-FPM socket exists or use port fallback |
 
 ---
 
@@ -224,6 +270,9 @@ For local development, SSL certificates are organized as follows:
 - ✅ **Smart Certificate Removal**: Reads actual certificate paths from Nginx config for safe removal
 - ✅ **Auto Directory Creation**: Automatically creates SSL certificate directories
 - ✅ **Clean Directory Management**: Removes empty directories after certificate deletion
+- ✅ **Dynamic PHP Detection**: Automatically detects available PHP versions and lets you choose
+- ✅ **Smart PHP-FPM Configuration**: Uses appropriate socket/port based on PHP version and OS
+- ✅ **Multi-Version PHP Support**: Supports multiple PHP versions (7.4, 8.0, 8.1, 8.2, 8.3+)
 
 ---
 

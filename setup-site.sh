@@ -35,6 +35,132 @@ if [[ "$OS_TYPE" == "linux" && ! -d "$NGINX_SITES_ENABLED" ]]; then
     sudo mkdir -p "$NGINX_SITES_ENABLED"
 fi
 
+# Fungsi untuk mendeteksi versi PHP yang tersedia
+detect_php_versions() {
+    echo "🔍 Mendeteksi versi PHP yang tersedia..."
+    
+    # Array untuk menyimpan versi PHP yang ditemukan
+    PHP_VERSIONS=()
+    PHP_FPM_PATHS=()
+    
+    if [[ "$OS_TYPE" == "macos" ]]; then
+        # macOS (Homebrew) - cek di /usr/local/bin dan /opt/homebrew/bin
+        for php_path in /usr/local/bin/php* /opt/homebrew/bin/php*; do
+            if [[ -x "$php_path" && "$php_path" =~ php[0-9]+\.[0-9]+ ]]; then
+                # Ekstrak versi dari nama file (contoh: php8.1 -> 8.1)
+                version=$(basename "$php_path" | sed 's/php//')
+                if [[ "$version" =~ ^[0-9]+\.[0-9]+$ ]]; then
+                    # Cek apakah PHP-FPM tersedia untuk versi ini
+                    fpm_socket="/usr/local/var/run/php-fpm-${version}.sock"
+                    fpm_port="127.0.0.1:90$(echo $version | tr -d '.')"  # 8.1 -> 9081, 8.2 -> 9082
+                    
+                    # Cek socket atau port yang tersedia
+                    if [[ -S "$fpm_socket" ]] || pgrep -f "php-fpm.*${version}" > /dev/null; then
+                        PHP_VERSIONS+=("$version")
+                        # Prioritaskan socket jika ada, fallback ke port
+                        if [[ -S "$fpm_socket" ]]; then
+                            PHP_FPM_PATHS+=("unix:$fpm_socket")
+                        else
+                            # Fallback ke port
+                            fpm_port="127.0.0.1:90$(echo $version | tr -d '.')"
+                            PHP_FPM_PATHS+=("$fpm_port")
+                        fi
+                    fi
+                fi
+            fi
+        done
+        
+        # Cek juga PHP default
+        if command -v php &> /dev/null; then
+            default_version=$(php -r "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;")
+            # Cek apakah versi default belum ada di list
+            if [[ ! " ${PHP_VERSIONS[@]} " =~ " ${default_version} " ]]; then
+                # Untuk PHP default, gunakan port 9000
+                PHP_VERSIONS+=("$default_version (default)")
+                PHP_FPM_PATHS+=("127.0.0.1:9000")
+            fi
+        fi
+        
+    elif [[ "$OS_TYPE" == "linux" ]]; then
+        # Linux - cek di /usr/bin dan service php-fpm
+        for php_path in /usr/bin/php*; do
+            if [[ -x "$php_path" && "$php_path" =~ php[0-9]+\.[0-9]+ ]]; then
+                # Ekstrak versi dari nama file
+                version=$(basename "$php_path" | sed 's/php//')
+                if [[ "$version" =~ ^[0-9]+\.[0-9]+$ ]]; then
+                    # Cek apakah service PHP-FPM berjalan untuk versi ini
+                    service_name="php${version}-fpm"
+                    if systemctl is-active --quiet "$service_name" 2>/dev/null || service "$service_name" status &>/dev/null; then
+                        PHP_VERSIONS+=("$version")
+                        # Linux biasanya menggunakan socket
+                        fpm_socket="/run/php/php${version}-fpm.sock"
+                        if [[ -S "$fpm_socket" ]]; then
+                            PHP_FPM_PATHS+=("unix:$fmp_socket")
+                        else
+                            # Fallback ke port
+                            fmp_port="127.0.0.1:90$(echo $version | tr -d '.')"
+                            PHP_FPM_PATHS+=("$fpm_port")
+                        fi
+                    fi
+                fi
+            fi
+        done
+        
+        # Cek juga PHP default
+        if command -v php &> /dev/null; then
+            default_version=$(php -r "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;")
+            if [[ ! " ${PHP_VERSIONS[@]} " =~ " ${default_version} " ]]; then
+                PHP_VERSIONS+=("$default_version (default)")
+                PHP_FPM_PATHS+=("127.0.0.1:9000")
+            fi
+        fi
+    fi
+    
+    # Jika tidak ada PHP yang ditemukan
+    if [[ ${#PHP_VERSIONS[@]} -eq 0 ]]; then
+        echo "⚠️  Tidak ada PHP yang terdeteksi di sistem!"
+        echo "💡 Silakan install PHP terlebih dahulu:"
+        if [[ "$OS_TYPE" == "macos" ]]; then
+            echo "   brew install php"
+        else
+            echo "   sudo apt install php-fpm"
+        fi
+        exit 1
+    fi
+    
+    echo "✅ Ditemukan ${#PHP_VERSIONS[@]} versi PHP"
+}
+
+# Fungsi untuk memilih versi PHP
+select_php_version() {
+    if [[ ${#PHP_VERSIONS[@]} -eq 1 ]]; then
+        # Jika hanya ada satu versi, gunakan otomatis
+        SELECTED_PHP_VERSION="${PHP_VERSIONS[0]}"
+        SELECTED_PHP_FPM="${PHP_FPM_PATHS[0]}"
+        echo "🐘 Menggunakan PHP ${SELECTED_PHP_VERSION} (otomatis)"
+    else
+        # Jika ada beberapa versi, biarkan user memilih
+        echo ""
+        echo "🐘 Pilih versi PHP yang ingin digunakan:"
+        for i in "${!PHP_VERSIONS[@]}"; do
+            echo "$((i+1))) PHP ${PHP_VERSIONS[$i]}"
+        done
+        
+        while true; do
+            read -p "Masukkan pilihan (1-${#PHP_VERSIONS[@]}): " php_choice
+            if [[ "$php_choice" =~ ^[0-9]+$ ]] && [[ "$php_choice" -ge 1 ]] && [[ "$php_choice" -le ${#PHP_VERSIONS[@]} ]]; then
+                index=$((php_choice-1))
+                SELECTED_PHP_VERSION="${PHP_VERSIONS[$index]}"
+                SELECTED_PHP_FPM="${PHP_FPM_PATHS[$index]}"
+                echo "✅ Dipilih: PHP ${SELECTED_PHP_VERSION}"
+                break
+            else
+                echo "❌ Pilihan tidak valid! Masukkan angka 1-${#PHP_VERSIONS[@]}"
+            fi
+        done
+    fi
+}
+
 echo "=== ⚙️  Setup / Hapus Proyek Web ==="
 echo "1) Buat konfigurasi baru"
 echo "2) Hapus konfigurasi yang sudah ada"
@@ -120,6 +246,12 @@ case $project_type in
     ;;
 esac
 
+# Deteksi dan pilih versi PHP untuk proyek Laravel dan WordPress
+if [[ "$TYPE" == "laravel" || "$TYPE" == "wordpress" ]]; then
+    detect_php_versions
+    select_php_version
+fi
+
 read -p "Masukkan domain yang ingin digunakan (contoh: wpstore.local): " domain
 read -p "Apakah ini proyek lokal? (y/n): " is_local
 
@@ -166,7 +298,7 @@ server {
 
     location ~ \.php\$ {
         include fastcgi_params;
-        fastcgi_pass 127.0.0.1:9000;
+        fastcgi_pass $SELECTED_PHP_FPM;
         fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
         include fastcgi.conf;
     }
@@ -224,4 +356,10 @@ sudo nginx -t && sudo nginx -s reload
 
 echo "✅ Selesai!"
 echo "Akses situs kamu di: http${use_ssl:+s}://$domain"
+
+# Tampilkan informasi PHP yang digunakan untuk proyek Laravel/WordPress
+if [[ "$TYPE" == "laravel" || "$TYPE" == "wordpress" ]]; then
+    echo "🐘 PHP yang digunakan: $SELECTED_PHP_VERSION"
+    echo "📡 PHP-FPM endpoint: $SELECTED_PHP_FPM"
+fi
 
