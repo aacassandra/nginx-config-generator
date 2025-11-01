@@ -2,6 +2,8 @@
 
 A simple bash script to easily **setup and remove Nginx configurations** automatically for **Laravel**, **WordPress**, and **Node.js** projects, including **local SSL** support using [`mkcert`](https://github.com/FiloSottile/mkcert).
 
+**🌍 Multi-OS Support**: Works seamlessly on both **macOS** (Homebrew) and **Linux** (Ubuntu/Debian) with automatic OS detection and appropriate configuration paths.
+
 ---
 
 ## ⚙️ Key Features
@@ -10,10 +12,12 @@ A simple bash script to easily **setup and remove Nginx configurations** automat
   - Laravel
   - WordPress
   - Node.js
+- 🌍 **Cross-platform compatibility** (macOS & Linux)
 - 🔒 Local SSL support via `mkcert`
 - 🧹 Easy uninstall configurations including SSL certificates
 - ⚡ Run from anywhere with a single `setup-site` command
 - 📁 Organized SSL certificate storage in `~/.local/ssl-certs/`
+- 🔗 **Smart symlink management** for Linux (sites-available ↔ sites-enabled)
 
 ---
 
@@ -39,6 +43,24 @@ A simple bash script to easily **setup and remove Nginx configurations** automat
   sudo chmod +x /usr/local/bin/mkcert
   mkcert -install
   ```
+
+---
+
+## 📂 Nginx Configuration Paths
+
+The script automatically detects your operating system and uses the appropriate Nginx configuration paths:
+
+| OS | Folder Config | Include Default | Notes |
+|---|---|---|---|
+| **macOS (Homebrew)** | `/usr/local/etc/nginx/servers/` | `include servers/*;` | Direct configuration files |
+| **Linux (Ubuntu/Debian)** | `/etc/nginx/sites-available/` & `/etc/nginx/sites-enabled/` | `include /etc/nginx/sites-enabled/*;` | Uses symlinks from sites-available to sites-enabled |
+
+### 🔗 Linux Symlink Management
+- Configuration files are created in `/etc/nginx/sites-available/`
+- Symlinks are automatically created in `/etc/nginx/sites-enabled/`
+- When removing configurations, both the original file and symlink are deleted
+
+---
 
 ## 📦 Script Installation
 
@@ -192,6 +214,11 @@ For local development, SSL certificates are organized as follows:
 
 ## 🆕 Recent Updates
 
+- ✅ **Multi-OS Support**: Automatic detection and support for macOS and Linux
+- ✅ **Smart Path Detection**: Uses appropriate Nginx paths for each OS
+- ✅ **Linux Symlink Management**: Automatic symlink creation/deletion for sites-available/sites-enabled
+- ✅ **Cross-Platform Commands**: Compatible sed commands for both macOS and Linux
+- ✅ **Directory Auto-Creation**: Creates necessary Nginx directories if they don't exist
 - ✅ **Organized SSL Storage**: SSL certificates now stored in `~/.local/ssl-certs/$domain/`
 - ✅ **Fixed Node.js SSL Bug**: Node.js projects can now use SSL without project path dependency
 - ✅ **Smart Certificate Removal**: Reads actual certificate paths from Nginx config for safe removal

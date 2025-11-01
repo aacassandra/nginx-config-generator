@@ -1,10 +1,39 @@
 #!/bin/bash
 set -e
 
-# Direktori konfigurasi Nginx
-NGINX_DIR="/usr/local/etc/nginx/servers"
+# Deteksi sistem operasi dan set path Nginx yang sesuai
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS (Homebrew)
+    NGINX_DIR="/usr/local/etc/nginx/servers"
+    NGINX_SITES_ENABLED=""
+    OS_TYPE="macos"
+    echo "🍎 Terdeteksi macOS - menggunakan Homebrew Nginx"
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    # Linux (Ubuntu/Debian)
+    NGINX_DIR="/etc/nginx/sites-available"
+    NGINX_SITES_ENABLED="/etc/nginx/sites-enabled"
+    OS_TYPE="linux"
+    echo "🐧 Terdeteksi Linux - menggunakan sites-available/sites-enabled"
+else
+    echo "❌ Sistem operasi tidak didukung: $OSTYPE"
+    exit 1
+fi
+
 # Direktori untuk menyimpan sertifikat SSL lokal
 SSL_CERTS_DIR="$HOME/.local/ssl-certs"
+
+# Pastikan direktori Nginx ada
+echo "🔍 Memeriksa direktori Nginx..."
+if [[ ! -d "$NGINX_DIR" ]]; then
+    echo "📁 Membuat direktori Nginx: $NGINX_DIR"
+    sudo mkdir -p "$NGINX_DIR"
+fi
+
+# Untuk Linux, pastikan sites-enabled juga ada
+if [[ "$OS_TYPE" == "linux" && ! -d "$NGINX_SITES_ENABLED" ]]; then
+    echo "📁 Membuat direktori sites-enabled: $NGINX_SITES_ENABLED"
+    sudo mkdir -p "$NGINX_SITES_ENABLED"
+fi
 
 echo "=== ⚙️  Setup / Hapus Proyek Web ==="
 echo "1) Buat konfigurasi baru"
@@ -27,6 +56,15 @@ if [[ "$main_choice" == "2" ]]; then
 
     echo "🧹 Menghapus konfigurasi Nginx untuk $domain..."
     sudo rm -f "$CONF_FILE"
+    
+    # Hapus symlink jika menggunakan Linux
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        SYMLINK_FILE="$NGINX_SITES_ENABLED/$domain.conf"
+        if [[ -L "$SYMLINK_FILE" ]]; then
+            echo "🔗 Menghapus symlink dari sites-enabled..."
+            sudo rm -f "$SYMLINK_FILE"
+        fi
+    fi
 
     if [[ -n "$CERT_FILE" && -n "$KEY_FILE" ]]; then
         if [[ "$CERT_FILE" == *"/usr/local/etc/nginx/certs/"* ]]; then
@@ -39,7 +77,11 @@ if [[ "$main_choice" == "2" ]]; then
     fi
 
     echo "🧾 Menghapus entri dari /etc/hosts..."
-    sudo sed -i '' "/$domain/d" /etc/hosts
+    if [[ "$OS_TYPE" == "macos" ]]; then
+        sudo sed -i '' "/$domain/d" /etc/hosts
+    else
+        sudo sed -i "/$domain/d" /etc/hosts
+    fi
 
     echo "🔁 Reloading Nginx..."
     sudo nginx -t && sudo nginx -s reload
@@ -153,11 +195,27 @@ if [[ "$use_ssl" == "y" ]]; then
         mkcert -cert-file "$CERT_FILE" -key-file "$KEY_FILE" "$domain"
 
         # Update konfigurasi Nginx untuk menggunakan SSL
-        sudo sed -i '' "s|listen 80;|listen 443 ssl;\n    ssl_certificate $CERT_FILE;\n    ssl_certificate_key $KEY_FILE;|" "$CONF_FILE"
+        if [[ "$OS_TYPE" == "macos" ]]; then
+            # macOS menggunakan sed dengan -i ''
+            sudo sed -i '' "s|listen 80;|listen 443 ssl;\n    ssl_certificate $CERT_FILE;\n    ssl_certificate_key $KEY_FILE;|" "$CONF_FILE"
+        else
+            # Linux menggunakan sed dengan -i tanpa ''
+            sudo sed -i "s|listen 80;|listen 443 ssl;\n    ssl_certificate $CERT_FILE;\n    ssl_certificate_key $KEY_FILE;|" "$CONF_FILE"
+        fi
         echo "✅ Sertifikat lokal disimpan di $DOMAIN_SSL_DIR"
     else
         echo "🌍 Menggunakan Let's Encrypt (certbot)..."
         sudo certbot --nginx -d "$domain"
+    fi
+fi
+
+# Buat symlink untuk Linux (sites-available -> sites-enabled)
+if [[ "$OS_TYPE" == "linux" ]]; then
+    SYMLINK_FILE="$NGINX_SITES_ENABLED/$domain.conf"
+    if [[ ! -L "$SYMLINK_FILE" ]]; then
+        echo "🔗 Membuat symlink ke sites-enabled..."
+        sudo ln -s "$CONF_FILE" "$SYMLINK_FILE"
+        echo "✅ Symlink dibuat: $SYMLINK_FILE"
     fi
 fi
 
