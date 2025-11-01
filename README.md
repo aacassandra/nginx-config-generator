@@ -1,0 +1,219 @@
+# 🧩 setup-site — Nginx Config Generator for Laravel, WordPress, Node.js
+
+A simple bash script to easily **setup and remove Nginx configurations** automatically for **Laravel**, **WordPress**, and **Node.js** projects, including **local SSL** support using [`mkcert`](https://github.com/FiloSottile/mkcert).
+
+---
+
+## ⚙️ Key Features
+
+- 🔧 Auto-generate Nginx configurations for:
+  - Laravel
+  - WordPress
+  - Node.js
+- 🔒 Local SSL support via `mkcert`
+- 🧹 Easy uninstall configurations including SSL certificates
+- ⚡ Run from anywhere with a single `setup-site` command
+- 📁 Organized SSL certificate storage in `~/.local/ssl-certs/`
+
+---
+
+## 🧱 Requirements
+
+### macOS
+- **Homebrew**
+- **Nginx** (`brew install nginx`)
+- **mkcert** (`brew install mkcert`)
+- **nss** (for Firefox trust store, `brew install nss`)
+
+### Linux (Ubuntu/Debian)
+- **Nginx**
+  ```bash
+  sudo apt install nginx -y
+  ```
+
+- **mkcert**
+  ```bash
+  sudo apt install libnss3-tools -y
+  wget https://github.com/FiloSottile/mkcert/releases/latest/download/mkcert-v1.4.4-linux-amd64
+  sudo mv mkcert-v1.4.4-linux-amd64 /usr/local/bin/mkcert
+  sudo chmod +x /usr/local/bin/mkcert
+  mkcert -install
+  ```
+
+## 📦 Script Installation
+
+1. **Save the `setup-site.sh` file to your home directory:**
+
+   ```bash
+   # Move script to home directory
+   mv setup-site.sh ~/setup-site.sh
+   ```
+
+2. **Grant execution permissions:**
+
+   ```bash
+   # Give permission to execute the script
+   chmod +x ~/setup-site.sh
+   ```
+
+3. **Add to global PATH for access from anywhere:**
+
+   ```bash
+   # Create symbolic link to /usr/local/bin for global access
+   sudo ln -sf ~/setup-site.sh /usr/local/bin/setup-site
+   ```
+
+4. **Verify installation:**
+
+   ```bash
+   # Test if script can be run from anywhere
+   setup-site
+   ```
+
+   If you see the menu:
+   ```diff
+   === ⚙️  Setup / Remove Web Project ===
+   1) Create new configuration
+   2) Remove existing configuration
+   ```
+
+   Installation successful! 🎉
+
+---
+
+## 🚀 Usage Guide
+
+### 📋 Creating New Configuration
+
+```bash
+# Run the setup-site script
+setup-site
+```
+
+Select option `1) Create new configuration`, then enter:
+
+• **Project type** (Laravel / WordPress / Node.js)
+• **Project folder path** (absolute path)
+• **Local domain** (example: `project.local`)
+• **Is this a local project** (`y/n`)
+• **Add SSL support** (`y/n`)
+
+The script will:
+
+• Create Nginx configuration file in `/usr/local/etc/nginx/servers/`
+• Create SSL certificates in `~/.local/ssl-certs/$domain/` (for local projects)
+• Automatically reload Nginx
+
+### 🗑️ Removing Existing Configuration
+
+```bash
+# Run the setup-site script
+setup-site
+```
+
+Select option `2) Remove existing configuration`, then enter:
+
+• **Domain of the project to remove** (example: `project.local`)
+
+The script will:
+
+• Remove Nginx configuration file for that domain
+• Remove SSL certificates (if any) by reading paths from Nginx config
+• Remove domain entry from `/etc/hosts`
+• Reload Nginx
+
+---
+
+## 📁 Default Directory Structure
+
+| File Type | Location |
+|-----------|----------|
+| Nginx Configuration | `/usr/local/etc/nginx/servers/` |
+| SSL Certificates (Local) | `~/.local/ssl-certs/$domain/` |
+| SSL Certificates (Production) | `/etc/letsencrypt/live/$domain/` |
+
+### 🔒 SSL Certificate Organization
+
+For local development, SSL certificates are organized as follows:
+
+```
+~/.local/ssl-certs/
+├── myapp.local/
+│   ├── myapp.local.pem
+│   └── myapp.local-key.pem
+├── wpstore.local/
+│   ├── wpstore.local.pem
+│   └── wpstore.local-key.pem
+└── api.local/
+    ├── api.local.pem
+    └── api.local-key.pem
+```
+
+> If the `servers` directory doesn't exist, the script will automatically create it.
+
+---
+
+## ⚠️ Important Notes
+
+• Run the script with a user that has access to Nginx directories.
+• If `nginx -t` fails, ensure SSL paths and project folders are correct.
+• For Firefox, run:
+
+  ```bash
+  # Install mkcert for Firefox to trust local certificates
+  mkcert -install
+  ```
+
+  to trust local certificates.
+
+---
+
+## 🔧 Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| Permission denied when creating SSL | Ensure you have write access to `~/.local/ssl-certs/` |
+| Nginx fails to reload | Check `nginx -t` to ensure no configuration errors |
+| Domain not recognized | Add domain to `/etc/hosts`, example: `127.0.0.1 myapp.local` |
+| Firefox doesn't recognize local SSL | Run `mkcert -install` again |
+| SSL certificates not found during removal | Script reads paths from Nginx config, ensure config file exists |
+
+---
+
+## 💡 Local Domain Examples
+
+| Domain | Project Type | Project Path |
+|--------|--------------|-------------|
+| `laravel.test` | Laravel | `/Users/john/Projects/laravel-app` |
+| `wpstore.local` | WordPress | `/Users/john/Projects/wordpress` |
+| `nodeapi.local` | Node.js | Port 3000 |
+
+---
+
+## 🆕 Recent Updates
+
+- ✅ **Organized SSL Storage**: SSL certificates now stored in `~/.local/ssl-certs/$domain/`
+- ✅ **Fixed Node.js SSL Bug**: Node.js projects can now use SSL without project path dependency
+- ✅ **Smart Certificate Removal**: Reads actual certificate paths from Nginx config for safe removal
+- ✅ **Auto Directory Creation**: Automatically creates SSL certificate directories
+- ✅ **Clean Directory Management**: Removes empty directories after certificate deletion
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+### MIT License Summary
+- ✅ Commercial use allowed
+- ✅ Modification allowed
+- ✅ Distribution allowed
+- ✅ Private use allowed
+- ❌ No warranty provided
+- ❌ No liability assumed
+
+---
+
+## 👨‍💻 Contributors
+
+Made with ❤️ by **Afif Saja**
