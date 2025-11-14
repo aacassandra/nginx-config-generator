@@ -11,6 +11,8 @@ A simple bash script to easily **setup and remove Nginx configurations** automat
 - 🔧 Auto-generate Nginx configurations for:
   - Laravel
   - WordPress
+  - Symfony
+  - HTML/SPA (React, Vue, Angular)
   - Node.js
 - 🌍 **Cross-platform compatibility** (macOS & Linux)
 - 🔒 Local SSL support via `mkcert`
@@ -114,8 +116,9 @@ setup-site
 
 Select option `1) Create new configuration`, then enter:
 
-• **Project type** (Laravel / WordPress / Node.js)
+• **Project type** (Laravel / WordPress / Symfony / HTML / Node.js)
 • **Project folder path** (absolute path)
+  - For HTML projects: Additional question about SPA (React/Vue/Angular) or static HTML
 • **Local domain** (example: `project.local`)
 • **Is this a local project** (`y/n`)
 • **Add SSL support** (`y/n`)
@@ -177,7 +180,7 @@ For local development, SSL certificates are organized as follows:
 
 ## 🐘 Dynamic PHP Version Detection
 
-For **Laravel** and **WordPress** projects, the script automatically detects available PHP versions and lets you choose:
+For **Laravel**, **WordPress**, and **Symfony** projects, the script automatically detects available PHP versions and lets you choose:
 
 ### 🔍 **Auto-Detection Process**
 
@@ -215,6 +218,147 @@ The script automatically configures the appropriate PHP-FPM endpoint:
 - ✅ **Cross-platform compatibility**
 - ✅ **Socket prioritization for better performance**
 - ✅ **Fallback to ports if sockets unavailable**
+- ✅ **SPA support with proper routing** (for React, Vue, Angular)
+- ✅ **Static HTML optimization** with caching and gzip
+
+---
+
+## 🎨 HTML & SPA Project Support
+
+The script now supports static HTML and Single Page Application (SPA) projects with optimized Nginx configurations.
+
+### 📋 **Project Types Supported**
+
+1. **Static HTML**: Traditional multi-page websites
+2. **SPA (Single Page Applications)**: React, Vue, Angular applications
+
+### 🔧 **Configuration Features**
+
+#### For Static HTML:
+- Standard file serving with `try_files $uri $uri/ =404`
+- Returns 404 for non-existent files
+- Optimized for traditional multi-page websites
+
+#### For SPA Applications:
+- Automatic fallback to `index.html` for all routes
+- Enables client-side routing (React Router, Vue Router, Angular Router)
+- Configuration: `try_files $uri $uri/ /index.html`
+
+### ⚡ **Performance Optimizations**
+
+Both HTML and SPA configurations include:
+
+- **Gzip Compression**: Reduces file sizes for faster loading
+  ```nginx
+  gzip on;
+  gzip_types text/plain text/css text/xml text/javascript application/javascript application/json;
+  ```
+
+- **Static Asset Caching**: 1-year cache for images, fonts, and styles
+  ```nginx
+  location ~* \.(jpg|jpeg|png|gif|ico|css|js|svg|woff|woff2|ttf|eot)$ {
+      expires 1y;
+      add_header Cache-Control "public, immutable";
+  }
+  ```
+
+- **Security Headers**: Protection against common vulnerabilities
+  ```nginx
+  add_header X-Frame-Options "SAMEORIGIN" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header X-XSS-Protection "1; mode=block" always;
+  ```
+
+### 📝 **Usage Example**
+
+```bash
+setup-site
+
+# Choose: 4) HTML
+# Enter project path: /Users/john/Projects/my-react-app
+# Enter domain: myapp.local
+# Is this a SPA (React/Vue/Angular)? y  ← Important for client-side routing
+# Local project? y
+# Add SSL? y
+```
+
+---
+
+## 🎼 Symfony Framework Support
+
+Full support for Symfony projects with proper directory structure and PHP-FPM integration.
+
+### 📂 **Directory Structure**
+
+Symfony projects use the `web/` directory as document root:
+```
+/path/to/symfony-project/
+├── app/
+├── src/
+├── web/              ← Document Root
+│   ├── index.php
+│   └── app.php
+├── vendor/
+└── composer.json
+```
+
+### 🔧 **Automatic Configuration**
+
+The script automatically:
+1. Sets document root to `{project_path}/web`
+2. Configures PHP-FPM with selected PHP version
+3. Sets up proper routing for Symfony controllers
+4. Enables `.htaccess` protection
+
+### 🐘 **PHP Version Selection**
+
+Like Laravel and WordPress, Symfony projects benefit from:
+- Automatic PHP version detection
+- Interactive PHP version selection
+- Smart PHP-FPM socket/port configuration
+- Multi-version PHP support (7.4, 8.0, 8.1, 8.2, 8.3+)
+
+### 📝 **Usage Example**
+
+```bash
+setup-site
+
+# Choose: 3) Symfony
+# Enter project path: /Users/john/Projects/symfony-blog
+# Choose PHP version: 2) PHP 8.2
+# Enter domain: symfony.local
+# Local project? y
+# Add SSL? y
+```
+
+### ⚙️ **Generated Nginx Configuration**
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name symfony.local;
+    root /Users/john/Projects/symfony-blog/web;
+    index index.php index.html;
+
+    ssl_certificate ~/.local/ssl-certs/symfony.local/symfony.local.pem;
+    ssl_certificate_key ~/.local/ssl-certs/symfony.local/symfony.local-key.pem;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass unix:/usr/local/var/run/php-fpm-8.2.sock;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+        include fastcgi.conf;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+}
+```
 
 ---
 
@@ -222,6 +366,9 @@ The script automatically configures the appropriate PHP-FPM endpoint:
 
 • Run the script with a user that has access to Nginx directories.
 • If `nginx -t` fails, ensure SSL paths and project folders are correct.
+• **For Symfony projects**: The script uses `web/` as document root (Symfony 2/3). If using Symfony 4+, manually edit the config to use `public/` instead.
+• **For SPA projects**: Make sure to answer 'y' when asked "Is this a SPA?" to enable proper client-side routing.
+• **For static HTML**: Answer 'n' to SPA question if you have traditional multi-page website.
 • For Firefox, run:
 
   ```bash
@@ -245,6 +392,9 @@ The script automatically configures the appropriate PHP-FPM endpoint:
 | No PHP versions detected | Install PHP: `brew install php` (macOS) or `sudo apt install php-fpm` (Linux) |
 | PHP-FPM not running | Start service: `brew services start php` (macOS) or `sudo systemctl start php8.2-fpm` (Linux) |
 | Socket connection failed | Check if PHP-FPM socket exists or use port fallback |
+| SPA routing not working | Ensure you answered 'y' when asked "Is this a SPA?" during setup |
+| Static assets not cached | Check nginx config has proper `location ~*` block for static files |
+| Symfony 404 errors | Verify project uses `web/` directory (older Symfony) or `public/` directory (Symfony 4+) |
 
 ---
 
@@ -254,6 +404,8 @@ The script automatically configures the appropriate PHP-FPM endpoint:
 |--------|--------------|-------------|
 | `laravel.test` | Laravel | `/Users/john/Projects/laravel-app` |
 | `wpstore.local` | WordPress | `/Users/john/Projects/wordpress` |
+| `symfony.local` | Symfony | `/Users/john/Projects/symfony-app` |
+| `myapp.local` | HTML/SPA | `/Users/john/Projects/react-app` |
 | `nodeapi.local` | Node.js | Port 3000 |
 
 ---
@@ -273,6 +425,10 @@ The script automatically configures the appropriate PHP-FPM endpoint:
 - ✅ **Dynamic PHP Detection**: Automatically detects available PHP versions and lets you choose
 - ✅ **Smart PHP-FPM Configuration**: Uses appropriate socket/port based on PHP version and OS
 - ✅ **Multi-Version PHP Support**: Supports multiple PHP versions (7.4, 8.0, 8.1, 8.2, 8.3+)
+- ✅ **Symfony Support**: Full support for Symfony framework with proper web directory configuration
+- ✅ **HTML/SPA Support**: Optimized configurations for static HTML and Single Page Applications
+- ✅ **SPA Routing**: Automatic fallback to index.html for React, Vue, and Angular applications
+- ✅ **Static Asset Optimization**: Cache headers and gzip compression for HTML projects
 
 ---
 
