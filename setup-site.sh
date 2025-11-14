@@ -95,10 +95,10 @@ detect_php_versions() {
                         # Linux biasanya menggunakan socket
                         fpm_socket="/run/php/php${version}-fpm.sock"
                         if [[ -S "$fpm_socket" ]]; then
-                            PHP_FPM_PATHS+=("unix:$fmp_socket")
+                            PHP_FPM_PATHS+=("unix:$fpm_socket")
                         else
                             # Fallback ke port
-                            fmp_port="127.0.0.1:90$(echo $version | tr -d '.')"
+                            fpm_port="127.0.0.1:90$(echo $version | tr -d '.')"
                             PHP_FPM_PATHS+=("$fpm_port")
                         fi
                     fi
@@ -222,8 +222,10 @@ echo "=== 🚀 Setup Proyek Web Baru ==="
 echo "Pilih jenis proyek:"
 echo "1) Laravel"
 echo "2) WordPress"
-echo "3) Node.js"
-read -p "Masukkan pilihan (1/2/3): " project_type
+echo "3) Symfony"
+echo "4) HTML"
+echo "5) Node.js"
+read -p "Masukkan pilihan (1/2/3/4/5): " project_type
 
 case $project_type in
   1)
@@ -237,6 +239,17 @@ case $project_type in
     ROOT_PATH="$project_path"
     ;;
   3)
+    TYPE="symfony"
+    read -p "Masukkan path folder proyek Symfony (misal: /Users/afif/Projects/myapp): " project_path
+    ROOT_PATH="$project_path/web"
+    ;;
+  4)
+    TYPE="html"
+    read -p "Masukkan path folder proyek HTML (misal: /Users/afif/Projects/mysite): " project_path
+    ROOT_PATH="$project_path"
+    read -p "Apakah ini SPA (React/Vue/Angular)? (y/n): " is_spa
+    ;;
+  5)
     TYPE="nodejs"
     read -p "Masukkan port proyek Node.js (misal: 3000): " node_port
     ;;
@@ -246,8 +259,8 @@ case $project_type in
     ;;
 esac
 
-# Deteksi dan pilih versi PHP untuk proyek Laravel dan WordPress
-if [[ "$TYPE" == "laravel" || "$TYPE" == "wordpress" ]]; then
+# Deteksi dan pilih versi PHP untuk proyek Laravel, WordPress, dan Symfony
+if [[ "$TYPE" == "laravel" || "$TYPE" == "wordpress" || "$TYPE" == "symfony" ]]; then
     detect_php_versions
     select_php_version
 fi
@@ -256,10 +269,10 @@ read -p "Masukkan domain yang ingin digunakan (contoh: wpstore.local): " domain
 read -p "Apakah ini proyek lokal? (y/n): " is_local
 
 if [[ "$is_local" == "y" ]]; then
-  IP="127.0.0.1"
-  echo "$IP $domain" | sudo tee -a /etc/hosts > /dev/null
+    echo "🔧 Menambahkan domain ke /etc/hosts..."
+    echo "127.0.0.1 $domain" | sudo tee -a /etc/hosts > /dev/null
 else
-  read -p "Masukkan IP server publik Anda: " IP
+    echo "🌍 Mode production - melewati konfigurasi /etc/hosts"
 fi
 
 read -p "Apakah Anda ingin menambahkan SSL? (y/n): " use_ssl
@@ -269,28 +282,134 @@ CONF_FILE="$NGINX_DIR/$domain.conf"
 echo "🧩 Membuat konfigurasi Nginx di $CONF_FILE ..."
 
 if [[ "$TYPE" == "nodejs" ]]; then
+    # Tentukan direktori log berdasarkan OS
+    if [[ "$OS_TYPE" == "macos" ]]; then
+        LOG_DIR="/usr/local/var/log/nginx"
+    else
+        LOG_DIR="/var/log/nginx"
+    fi
+
 cat <<EOF | sudo tee "$CONF_FILE" > /dev/null
 server {
     listen 80;
     server_name $domain;
 
+    # Logging
+    access_log ${LOG_DIR}/${domain}.access.log;
+    error_log  ${LOG_DIR}/${domain}.error.log;
+
+    # Body max upload
+    client_max_body_size 50M;
+
     location / {
         proxy_pass http://127.0.0.1:$node_port;
         proxy_http_version 1.1;
+        
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        
         proxy_cache_bypass \$http_upgrade;
+        
+        # Timeout settings
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+
+    # Deny access to hidden files
+    location ~ /\\. {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+
+    # Gzip
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript application/xml application/xml+rss text/javascript image/svg+xml;
+    gzip_min_length 1000;
+}
+EOF
+
+elif [[ "$TYPE" == "html" ]]; then
+    # Tentukan direktori log berdasarkan OS
+    if [[ "$OS_TYPE" == "macos" ]]; then
+        LOG_DIR="/usr/local/var/log/nginx"
+    else
+        LOG_DIR="/var/log/nginx"
+    fi
+
+    # Tentukan try_files berdasarkan apakah SPA atau tidak
+    if [[ "$is_spa" == "y" ]]; then
+        TRY_FILES="\$uri \$uri/ /index.html"
+    else
+        TRY_FILES="\$uri \$uri/ =404"
+    fi
+
+cat <<EOF | sudo tee "$CONF_FILE" > /dev/null
+server {
+    listen 80;
+    server_name $domain;
+    root $ROOT_PATH;
+    index index.html index.htm;
+
+    # Logging
+    access_log ${LOG_DIR}/${domain}.access.log;
+    error_log  ${LOG_DIR}/${domain}.error.log;
+
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/xml text/javascript application/x-javascript application/xml+rss application/javascript application/json image/svg+xml;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # Cache static assets
+    location ~* \.(jpg|jpeg|png|gif|ico|css|js|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Main location
+    location / {
+        try_files $TRY_FILES;
+    }
+
+    # Deny access to hidden files
+    location ~ /\\. {
+        deny all;
+        access_log off;
+        log_not_found off;
     }
 }
 EOF
+
 else
+# Konfigurasi untuk Laravel, WordPress, dan Symfony (PHP-based)
+    # Tentukan direktori log berdasarkan OS
+    if [[ "$OS_TYPE" == "macos" ]]; then
+        LOG_DIR="/usr/local/var/log/nginx"
+    else
+        LOG_DIR="/var/log/nginx"
+    fi
+
 cat <<EOF | sudo tee "$CONF_FILE" > /dev/null
 server {
     listen 80;
     server_name $domain;
     root $ROOT_PATH;
     index index.php index.html index.htm;
+
+    # Logging
+    access_log ${LOG_DIR}/${domain}.access.log;
+    error_log  ${LOG_DIR}/${domain}.error.log;
 
     location / {
         try_files \$uri \$uri/ /index.php?\$query_string;
@@ -306,6 +425,11 @@ server {
     location ~ /\.ht {
         deny all;
     }
+
+    # Gzip
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript application/xml text/xml;
+    gzip_min_length 1000;
 }
 EOF
 fi
@@ -357,9 +481,8 @@ sudo nginx -t && sudo nginx -s reload
 echo "✅ Selesai!"
 echo "Akses situs kamu di: http${use_ssl:+s}://$domain"
 
-# Tampilkan informasi PHP yang digunakan untuk proyek Laravel/WordPress
-if [[ "$TYPE" == "laravel" || "$TYPE" == "wordpress" ]]; then
+# Tampilkan informasi PHP yang digunakan untuk proyek PHP-based
+if [[ "$TYPE" == "laravel" || "$TYPE" == "wordpress" || "$TYPE" == "symfony" ]]; then
     echo "🐘 PHP yang digunakan: $SELECTED_PHP_VERSION"
     echo "📡 PHP-FPM endpoint: $SELECTED_PHP_FPM"
 fi
-
